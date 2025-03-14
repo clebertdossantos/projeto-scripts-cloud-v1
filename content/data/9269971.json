@@ -1,0 +1,14 @@
+{
+  "aa": {
+    "id": 5894544,
+    "type": "CARACTER"
+  },
+  "entidade": {
+    "id": 5894545,
+    "type": "LISTA_MULTIPLA"
+  },
+  "consolidado": {
+    "id": 5894546,
+    "type": "LISTA_OPCOES"
+  }
+}

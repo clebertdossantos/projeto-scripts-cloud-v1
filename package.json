@@ -1,0 +1,20 @@
+{
+  "name": "exec-script",
+  "version": "1.0.0",
+  "main": "xxxxx.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start" : "node ./src/main.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.8.2",
+    "dotenv": "^16.4.7",
+    "install": "^0.13.0",
+    "npm": "^11.2.0",
+    "puppeteer": "^24.4.0"
+  }
+}
