@@ -118,6 +118,7 @@ async function loginContabilCloud() {
       .get("UserAccessContext")
       .getUserAccess().licenseId;
   });
+
   if (!cfg_cloud) {
     cfg_cloud = {
       authorizationCloud: {
