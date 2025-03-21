@@ -6,8 +6,11 @@ const {
   writeFileSync,
   existsSync,
   unlinkSync,
+  mkdirSync,
+  createReadStream,
 } = require("node:fs");
-const { resolve, extname } = require("node:path");
+const unzipper = require("unzipper");
+const { resolve, extname, join } = require("node:path");
 const FormData = require("form-data");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -25,13 +28,42 @@ const tipoParametroMap = new Map([
   [9, "SENHA"],
 ]);
 
+async function downloadAndExtractZip(codigoExecucao) {
+  try {
+    const response = await axios.get(
+      `https://plataforma-execucoes.betha.cloud/v1/download/api/execucoes/${codigoExecucao}/resultado`,
+      {
+        responseType: "arraybuffer", // Para receber o arquivo binário
+      }
+    );
+    // Definindo o caminho completo do arquivo para salvar
+    const filePath = join(__dirname, `../res/${codigoExecucao}.zip`);
+    // Salvando o arquivo ZIP no disco
+    writeFileSync(filePath, response.data);
+    console.log(`🔥 Arquivo ${codigoExecucao}.zip baixado com sucesso!`);
+    // Criando a pasta 'resp' caso ela não exista
+    const respPath = join(__dirname, "../res");
+    if (!existsSync(respPath)) {
+      mkdirSync(respPath);
+    }
+    // Abrindo o arquivo ZIP e extraindo seu conteúdo para a pasta 'resp'
+    await createReadStream(filePath)
+      .pipe(unzipper.Extract({ path: respPath }))
+      .promise(); // Usamos o .promise() para garantir que o processo de extração seja assíncrono
+    unlinkSync(filePath);
+  } catch (error) {
+    console.error("❌ Erro durante o download ou extração do arquivo:", error);
+  }
+}
+
 async function statusExecucaoScript(codigoExecucao) {
   while (true) {
     await sleep(10000); // 5 segundos
     let response = await axios.get(
       `https://plataforma-execucoes-v2.betha.cloud/api/consulta/${codigoExecucao}`
     );
-    let { status, tipoConclusao, mensagemConclusao } = response.data;
+    let { status, tipoConclusao, mensagemConclusao, gerouResultado } =
+      response.data;
     // log(response.data);
     if (status.value === "CONCLUIDO") {
       if (tipoConclusao.value !== "SUCESSO") {
@@ -39,8 +71,33 @@ async function statusExecucaoScript(codigoExecucao) {
       } else {
         log(`✅ - ${mensagemConclusao}`);
       }
+      if (gerouResultado) {
+        await downloadAndExtractZip(codigoExecucao);
+      }
       return;
     }
+  }
+}
+
+async function limparGitHub() {
+  let content = readdirSync(resolve(__dirname, "../content"));
+  for (pasta of content) {
+    let caminho = readdirSync(resolve(__dirname, `../content/${pasta}`));
+    for (arq of caminho) {
+      unlinkSync(resolve(__dirname, `../content/${pasta}/${arq}`));
+    }
+  }
+  let logs = readdirSync(resolve(__dirname, "../logs"));
+  for (arq of logs) {
+    unlinkSync(resolve(__dirname, `../logs/${arq}`));
+  }
+  let scripts = readdirSync(resolve(__dirname, "../scripts"));
+  for (arq of scripts) {
+    unlinkSync(resolve(__dirname, `../scripts/${arq}`));
+  }
+  let downloads = readdirSync(resolve(__dirname, "../res"));
+  for (arq of downloads) {
+    unlinkSync(resolve(__dirname, `../res/${arq}`));
   }
 }
 
@@ -95,6 +152,30 @@ async function chaveAcesso(cfg) {
 }
 
 function getArquivos() {
+  let estruturaPastas = {
+    content: ["db", "data", "parametros"],
+    logs: [],
+    res: [],
+    scripts: [],
+  };
+  const basePath = resolve(__dirname, "../");
+  Object.keys(estruturaPastas).forEach((pasta) => {
+    const pastaPath = join(basePath, pasta);
+    if (!existsSync(pastaPath)) {
+      mkdirSync(pastaPath, { recursive: true });
+      log(`📁 Criado: ${pastaPath}`);
+    }
+
+    // Criando subpastas dentro de cada diretório
+    estruturaPastas[pasta].forEach((subpasta) => {
+      const subPastaPath = join(pastaPath, subpasta);
+      if (!existsSync(subPastaPath)) {
+        mkdirSync(subPastaPath, { recursive: true });
+        log(`📂 Criado: ${subPastaPath}`);
+      }
+    });
+  });
+
   let arquivos = readdirSync(resolve(__dirname, "../scripts"))
     .filter((arq) => extname(arq) === ".groovy")
     .map((arq) => arq.replace(/\.groovy/, ""));
@@ -103,6 +184,7 @@ function getArquivos() {
   for (pasta of pastas) {
     let caminho = readdirSync(resolve(__dirname, `../content/${pasta}`));
     for (arq of caminho) {
+      if (arq === "scripts.json") continue;
       if (!arquivos.includes(arq.replace(extname(arq), ""))) {
         unlinkSync(resolve(__dirname, `../content/${pasta}/${arq}`));
       }
@@ -114,6 +196,11 @@ function getArquivos() {
       unlinkSync(resolve(__dirname, `../logs/${arq}`));
     }
   }
+  let arqs_download = readdirSync(resolve(__dirname, "../res"));
+  for (arq of arqs_download) {
+    unlinkSync(resolve(__dirname, `../res/${arq}`));
+  }
+
   return arquivos;
 }
 
@@ -249,6 +336,7 @@ async function publicarScripts(authorizationCloud) {
 }
 
 async function executarScript(authorizationCloud, idScript) {
+  await buscaArquivoGroovy(authorizationCloud);
   try {
     let scripts = JSON.parse(
       readFileSync(resolve(__dirname, "../content/db/scripts.json"))
@@ -257,7 +345,7 @@ async function executarScript(authorizationCloud, idScript) {
       readFileSync(resolve(__dirname, `../content/parametros/${idScript}.json`))
     );
     let paramsEstrutura = JSON.parse(
-      readFileSync(resolve(__dirname, `../content/parametros/${idScript}.json`))
+      readFileSync(resolve(__dirname, `../content/data/${idScript}.json`))
     );
     let detalhes = scripts[idScript];
     const url = `https://plataforma-scripts.betha.cloud/scripts/v1/api/scripts/${idScript}/versoes/${detalhes.versao}/acoes/executar`;
@@ -272,6 +360,8 @@ async function executarScript(authorizationCloud, idScript) {
       if (parametros[el] === "") continue;
       let tipo = paramsEstrutura[el].type;
       if (tipo === "LISTA_MULTIPLA" || Array.isArray(parametros[el])) {
+        formData.append(el, JSON.stringify(parametros[el]));
+      } else if (tipo === "LISTA_OPCOES") {
         formData.append(el, JSON.stringify(parametros[el]));
       } else {
         formData.append(el, parametros[el]);
@@ -304,4 +394,5 @@ module.exports = {
   executarScript,
   getLogExecucaoScript,
   statusExecucaoScript,
+  limparGitHub,
 };
