@@ -6,6 +6,7 @@ const {
   executarScript,
   getLogExecucaoScript,
   statusExecucaoScript,
+  limparGitHub,
 } = require("./utils");
 const dotenv = require("dotenv");
 const { log } = require("node:console");
@@ -26,8 +27,12 @@ log(`🎯 ${entidade.id} - ${entidade.nome}`);
 let processos = process.argv.slice(2, process.argv.length);
 // log(processos);
 (async () => {
-  if (!cfg_cloud || (await chaveAcesso(cfg_cloud))) {
+  if (processos.includes("true")) {
     await loginContabilCloud(); // 🫡 login no sistema
+  } else {
+    if (!cfg_cloud || (await chaveAcesso(cfg_cloud))) {
+      await loginContabilCloud(); // 🫡 login no sistema
+    }
   }
   let { authorizationCloud } = cfg_cloud;
 
@@ -54,14 +59,13 @@ let processos = process.argv.slice(2, process.argv.length);
     args = args.filter((pp) => pp !== "");
     if (args.length === 1) {
       let protocolo = args.find((pp) => pp);
-      await getLogExecucaoScript(authorizationCloud, protocolo);
+      await getLogExecucaoScript(authorizationCloud, protocolo, protocolo);
     } else {
       console.error(
         `❌ Problemas com protoloco de execução, envie apenas um protocolo por vez!`
       );
     }
   }
-
   if (processos.includes("status")) {
     let [_, ...args] = processos.join("").split("status");
     args = args.filter((pp) => pp !== "");
@@ -73,5 +77,8 @@ let processos = process.argv.slice(2, process.argv.length);
         `❌ Problemas com protoloco de execução, envie apenas um protocolo por vez!`
       );
     }
+  }
+  if (processos.includes("github")) {
+    await limparGitHub();
   }
 })();
